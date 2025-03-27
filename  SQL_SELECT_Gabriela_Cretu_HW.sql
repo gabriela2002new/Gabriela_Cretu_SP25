@@ -12,53 +12,57 @@
 --Part 1: Write SQL queries to retrieve the following data
 --A.All animation movies released between 2017 and 2019 with rate more than 1, alphabetical
 
---solution
-SELECT f.film_id, f.title, f.rating, c."name"  -- Included all the titles of movies, ID, rating, and name of category
-FROM film f
-LEFT OUTER JOIN film_category fc ON f.film_id = fc.film_id
-LEFT OUTER JOIN category c ON fc.category_id = c.category_id  -- Denormalization of the many-to-many relationship between film and category using the bridge table film_category
-WHERE f.rating IN ('PG', 'PG-13', 'NC-17', 'R')  -- Include films with the ratings PG, PG-13, NC-17, or R(except G considered rating 1)
+
+SELECT  f.title -- Included all the titles of movies, ID, rating, and name of category
+FROM public.film f
+INNER JOIN film_category fc ON f.film_id = fc.film_id
+INNER JOIN category c ON fc.category_id = c.category_id  -- Denormalization of the many-to-many relationship between film and category using the bridge table film_category
+WHERE f.rental_rate >1  -- a rental rate larger than 1
   AND f.release_year BETWEEN 2017 AND 2019  -- Check if the year is between 2017 and 2019
-  AND c."name" IN ('Animation');  -- Check that the category of the film is 'Animation'
+  AND UPPER(c."name") IN ('ANIMATION')
+order by f.title ;  -- Check that the category of the film is 'Animation'
 
 --extension(here I considered a way to find all ratings in order to decide on the rating 1 which I found to be 'G'(general))  
 SELECT f.rating, COUNT(*)  -- Select the rating and count the number of films for each rating
-FROM film f 
+FROM public.film f 
 WHERE f.release_year BETWEEN 2017 AND 2019  -- Filter films released between 2017 and 2019
 GROUP BY f.rating;  -- Group results by rating
 
 --B.The revenue earned by each rental store after March 2017 (columns: address and address2 – as one column, revenue)
-SELECT s.store_id, 
+
+SELECT CONCAT(a.address, 
+         CASE WHEN a.address2 IS NOT NULL THEN CONCAT(', ', a.address2) ELSE '' end
+  ) AS full_address,
        COALESCE(SUM(p.amount), 0) AS revenue -- I used COALESCE to treat NULL values as 0 instead of ignoring them
-FROM store s
+FROM public.store s--conatenated the two columns in one called full_address
+left join address a on s.address_id =a.address_id 
 LEFT JOIN inventory i ON s.store_id = i.store_id
 LEFT JOIN rental r ON i.inventory_id = r.inventory_id 
 LEFT JOIN payment p ON r.rental_id = p.rental_id -- Denormalization of the relationships, starting from store, then inventory, rental, and finally payment
 WHERE p.payment_date > '2017-03-31'  -- Filter for payments after March 31, 2017
-GROUP BY s.store_id -- Group by store_id to retrieve the revenue for each store
+GROUP BY s.store_id, a.address,a.address2 -- Group by store_id to retrieve the revenue for each store
 ORDER BY revenue; -- Order by revenue from lowest to highest
-
-
 
 -- C. Top 5 actors by number of movies (released after 2015) they took part in 
 -- (columns: first_name, last_name, number_of_movies, sorted by number_of_movies in descending order)
 
 -- Solution 1: (Here I considered actor_id as the main grouping element)
-SELECT a.first_name, a.last_name, COUNT(f.film_id) AS movies
-FROM actor a
-LEFT OUTER JOIN film_actor fa ON a.actor_id = fa.actor_id 
-LEFT OUTER JOIN film f ON fa.film_id = f.film_id -- Denormalization of the many-to-many relationship between film and actor
+SELECT a.first_name, a.last_name,     COUNT(CASE WHEN f.release_year > 2015 THEN f.film_id END) AS number_of_movies
+FROM public.actor a
+INNER JOIN film_actor fa ON a.actor_id = fa.actor_id 
+inner JOIN film f ON fa.film_id = f.film_id -- Denormalization of the many-to-many relationship between film and actor
 GROUP BY a.actor_id, a.first_name, a.last_name -- Grouped by actor_id to ensure uniqueness of actors
-ORDER BY movies DESC -- Ordered from the actor with the most movies to the actor with the least
+ORDER BY number_of_movies DESC -- Ordered from the actor with the most movies to the actor with the least
 LIMIT 5; -- Retrieved the top 5 actors
 
+
 -- Solution 2: (Here I grouped only by a.first_name and a.last_name)
-SELECT a.first_name, a.last_name, COUNT(f.film_id) AS movies
-FROM actor a
-LEFT OUTER JOIN film_actor fa ON a.actor_id = fa.actor_id 
-LEFT OUTER JOIN film f ON fa.film_id = f.film_id -- Denormalization of the many-to-many relationship between film and actor
+SELECT a.first_name, a.last_name, COUNT(CASE WHEN f.release_year > 2015 THEN f.film_id END) AS number_of_movies
+FROM public.actor a
+inner JOIN film_actor fa ON a.actor_id = fa.actor_id 
+inner JOIN film f ON fa.film_id = f.film_id -- Denormalization of the many-to-many relationship between film and actor
 GROUP BY a.first_name, a.last_name -- Grouped by first_name and last_name, potentially combining actors with the same name
-ORDER BY movies DESC -- Ordered from the actor with the most movies to the actor with the least
+ORDER BY number_of_movies DESC -- Ordered from the actor with the most movies to the actor with the least
 LIMIT 5; -- Retrieved the top 5 actors
 
 -- Conclusion: I obtained different results because at least  one actor(e.g. Susan Davis) exists under two different actor_ids, 
@@ -69,25 +73,26 @@ LIMIT 5; -- Retrieved the top 5 actors
 
 -- Solution 1 (Preferred: Here, I followed the instructions, creating separate columns for each film category. 
 -- This is more efficient as it results in a total of 31 * 4 cells)
+
 SELECT f.release_year,
-       COALESCE(SUM(CASE WHEN c.name = 'Drama' THEN 1 ELSE 0 END), 0) AS number_of_drama_movies, -- Column for the number of Drama movies
-       COALESCE(SUM(CASE WHEN c.name = 'Travel' THEN 1 ELSE 0 END), 0) AS number_of_travel_movies, -- Column for the number of Travel movies
-       COALESCE(SUM(CASE WHEN c.name = 'Documentary' THEN 1 ELSE 0 END), 0) AS number_of_documentary_movies -- Column for the number of Documentary movies
-FROM film f
+       COUNT(CASE WHEN c.name = 'Drama' THEN 1 ELSE NULL END) AS number_of_drama_movies,
+       COUNT(CASE WHEN c.name = 'Travel' THEN 1 ELSE NULL END) AS number_of_travel_movies,
+       COUNT(CASE WHEN c.name = 'Documentary' THEN 1 ELSE NULL END) AS number_of_documentary_movies
+FROM public.film f
 LEFT JOIN film_category fc ON f.film_id = fc.film_id
-LEFT JOIN category c ON fc.category_id = c.category_id -- Denormalization of the many-to-many relationship between film and category through the bridge table film_category
-WHERE c.name IN ('Drama', 'Travel', 'Documentary') -- Only include movies from these categories
-GROUP BY f.release_year -- Group by release year to count the number of movies for each category in that year
-ORDER BY f.release_year DESC; -- Order by release year in descending order
+LEFT JOIN category c ON fc.category_id = c.category_id
+WHERE UPPER(c.name) IN ('DRAMA', 'TRAVEL', 'DOCUMENTARY')
+GROUP BY f.release_year
+ORDER BY f.release_year DESC;
 
 -- Solution 2 (Alternative: In this attempt, I grouped by both category and release year. This results in the same outcome as Solution 1, 
 -- but is less efficient because it generates 31 * 3 lines, with 3 columns for category name, year, and count—totaling 31 * 3 * 3 cells)
 SELECT c."name", f.release_year, COUNT(c.category_id) AS movies
-FROM film f
+FROM public.film f
 LEFT OUTER JOIN film_category fc ON f.film_id = fc.film_id
 LEFT OUTER JOIN category c ON fc.category_id = c.category_id -- Denormalization of the many-to-many relationship between film and category through the bridge table film_category
 GROUP BY c."name", f.release_year -- Group by both category name and release year to count the number of movies for each category each year
-HAVING c."name" IN ('Drama', 'Travel', 'Documentary') -- Only consider movies in these categories
+HAVING UPPER(c."name") IN ('DRAMA', 'TRAVEL', 'DOCUMENTARY') -- Only consider movies in these categories
 ORDER BY  f.release_year DESC, c."name" DESC; -- Order by category name and release year
 
 
@@ -104,7 +109,7 @@ ORDER BY  f.release_year DESC, c."name" DESC; -- Order by category name and rele
 
 --First attempt(here I simply considered they worked at the same store during the year)
 select s.first_name ,s.last_name ,st.store_id, sum(p.amount)--included the first name last name store id and the total revenue made by each employee
-from staff s
+from public.staff s
 left join payment p on p.staff_id =s.staff_id 
 left join store st on s.store_id=st.store_id -- denormalization of the relationships between staff, payment, store
 WHERE extract(year from p.payment_date) = 2017--i considered the payment only during 2017
@@ -112,10 +117,10 @@ group by s.first_name ,s.last_name, st.store_id ;-- grouped by the names as well
 
 
 --Solution(here I considered the possibility that they may have worked at different stores during a year and considered only the last one)
-SELECT s.first_name,s.last_name,s.last_name, st.store_id,SUM(p.amount) AS total_revenue  -- Selecting the first name, last name, store ID , sum up the generated revenue for each staff memberof the staff member
-FROM staff s  -- Starting from the 'staff' table
-JOIN payment p ON p.staff_id = s.staff_id  -- Joining the 'payment' table on staff ID to get payments made by the staff
-JOIN store st ON st.store_id = (  
+SELECT s.first_name,s.last_name, st.store_id,SUM(p.amount) AS total_revenue  -- Selecting the first name, last name, store ID , sum up the generated revenue for each staff memberof the staff member
+FROM public.staff s  -- Starting from the 'staff' table
+inner JOIN payment p ON p.staff_id = s.staff_id  -- Joining the 'payment' table on staff ID to get payments made by the staff
+inner JOIN store st ON st.store_id = (  
         SELECT st2.store_id  -- Subquery to find the store where the staff worked during the last payment in 2017
         FROM store st2  -- Querying the 'store' table to get the store ID
         JOIN payment p2 ON p2.staff_id = s.staff_id  -- Joining the 'payment' table to get the payment details
@@ -153,9 +158,9 @@ select f.film_id, f.title, f.rating, count(r.rental_id) as rentals,
         ELSE 'Unknown Rating'
     END AS age_restriction
     -- This CASE statement categorizes the films based on their rating into expected age groups
-from film f 
-left outer join inventory i on f.film_id = i.film_id 
-left outer join rental r on i.inventory_id = r.inventory_id 
+from public.film f 
+inner join inventory i on f.film_id = i.film_id 
+inner join rental r on i.inventory_id = r.inventory_id 
     -- Denormalization of the relationship between film_id, inventory, and rentals to allow counting of rentals per film
 group by f.film_id, f.title, f.rating 
     -- Grouped by film_id, title, and rating as these columns together define each unique movie
@@ -175,11 +180,11 @@ limit 5;
 --The task can be interpreted in various ways, and here are a few options:
 
 -- V1: Gap between the latest release_year and the current year for each actor
-SELECT a.actor_id, a.first_name, a.last_name, f.release_year, EXTRACT(YEAR FROM CURRENT_DATE) - f.release_year AS last_gap
+SELECT a.actor_id, a.first_name, a.last_name, EXTRACT(YEAR FROM CURRENT_DATE) - f.release_year AS last_gap
     -- Selected actor information (ID, first name, last name), movie release year, and a new column 'last_gap' representing the time between the latest movie and the current year
-FROM actor a
-LEFT OUTER JOIN film_actor fa ON a.actor_id = fa.actor_id
-LEFT OUTER JOIN film f ON fa.film_id = f.film_id
+FROM public.actor a
+inner JOIN film_actor fa ON a.actor_id = fa.actor_id
+inner JOIN film f ON fa.film_id = f.film_id
     -- Denormalization of the many-to-many relationship between actor and film through the `film_actor` bridge table
 WHERE f.release_year = (
     SELECT MAX(f2.release_year)
@@ -198,24 +203,56 @@ ORDER BY last_gap DESC;
 
 --V2: gaps between sequential films per each actor;
 
+
+--Solution 1:(to address efficiency concerns, I used two CTEs: one to capture the actor and release year, and another to calculate the lag years indicating when 
+--the actor's previous movie was released.)
+WITH FilmOrder AS (
+    SELECT 
+        fa.actor_id, 
+        f.release_year
+    FROM public.film_actor fa
+    JOIN public.film f ON fa.film_id = f.film_id
+), -- This CTE extracts the actor_id and release_year from the film and film_actor tables. It prepares the data to make it easier and faster to calculate the release year gaps in the next CTE.
+FilmGaps AS (
+    SELECT 
+        f1.actor_id,
+        f1.release_year AS current_year,
+        MAX(f2.release_year) AS previous_year
+    FROM FilmOrder f1
+    LEFT JOIN FilmOrder f2 
+        ON f1.actor_id = f2.actor_id 
+        AND f2.release_year < f1.release_year
+    GROUP BY f1.actor_id, f1.release_year
+) -- This CTE finds, for each actor and each movie, the release year of their most recent previous movie (if any).
+SELECT 
+    a.actor_id, 
+    a.first_name, 
+    a.last_name,
+    MAX(fg.current_year - fg.previous_year) AS max_gap
+FROM public.actor a
+JOIN FilmGaps fg ON a.actor_id = fg.actor_id -- Joining actor with FilmGaps to calculate the longest gap for each actor.
+WHERE previous_year IS NOT NULL -- Exclude cases where there is no previous movie (i.e., the actor's first movie).
+GROUP BY a.actor_id, a.first_name, a.last_name -- Group by actor to calculate the gap per actor.
+ORDER BY max_gap DESC, a.last_name, a.first_name; -- Order by the largest gap first, then by last name and first name.
+
+--Solution 2:(less efficient subquery, usig a nested subquery.)
 SELECT a.actor_id, a.first_name, a.last_name,
-    -- Selected actor information (actor ID, first name, last name) from the `actor` table
-    MAX(f.release_year - (
-        SELECT MAX(f_prev.release_year) 
-        FROM film_actor fa_prev
-        JOIN film f_prev ON fa_prev.film_id = f_prev.film_id
-        WHERE fa_prev.actor_id = a.actor_id 
-        AND f_prev.release_year < f.release_year
-    )) AS max_gap
-    -- This subquery computes the most recent movie released before the current one and calculates the difference in years as `max_gap`
-FROM actor a
-LEFT OUTER JOIN film_actor fa ON a.actor_id = fa.actor_id
-LEFT OUTER JOIN film f ON fa.film_id = f.film_id
-    -- Denormalization of the many-to-many relationship between actor and film through the `film_actor` bridge table
+   -- Selected actor information (actor ID, first name, last name) from the `actor` table
+   MAX(f.release_year - (
+       SELECT MAX(f_prev.release_year)
+       FROM public.film_actor fa_prev
+       JOIN public.film f_prev ON fa_prev.film_id = f_prev.film_id
+       WHERE fa_prev.actor_id = a.actor_id
+       AND f_prev.release_year < f.release_year
+   )) AS max_gap
+   -- This subquery computes the most recent movie released before the current one and calculates the difference in years as `max_gap`
+FROM public.actor a
+inner JOIN public.film_actor fa ON a.actor_id = fa.actor_id
+inner JOIN public.film f ON fa.film_id = f.film_id
+   -- Denormalization of the many-to-many relationship between actor and film through the `film_actor` bridge table
 GROUP BY a.actor_id, a.first_name, a.last_name
-    -- Grouped by actor ID, first name, and last name to uniquely identify each actor
-ORDER BY max_gap DESC, a.last_name, a.first_name;
-    -- Ordered by `max_gap` in descending order to display actors who had the longest gap between films
+   -- Grouped by actor ID, first name, and last name to uniquely identify each actor
+ORDER BY max_gap DESC, a.last_name, a.first_name; -- Ordered by max_gap in descending order to display actors who had the longest gap between films
 
 --Solution:Here we have that largest gap between two consecutive movies of an actor was of 9 year for Minnie Kilmer and Jayne Neeson then 
 --followed closely by Laura Brody, Adam Grant, Gary Penn and Burt Posey with a 8 year gap.
