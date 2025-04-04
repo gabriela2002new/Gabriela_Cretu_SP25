@@ -1,5 +1,8 @@
--- 1. Create the table 'table_to_delete' and fill it with data:
+-- ============================================
+--  0. Create the table and fill with data
+-- ============================================
 
+--  Create the table 'table_to_delete' and fill it with data:
 CREATE TABLE table_to_delete AS
 SELECT 'veeeeeeery_long_string' || x AS col
 FROM generate_series(1, (10^7)::int) x;
@@ -9,8 +12,14 @@ FROM generate_series(1, (10^7)::int) x;
 -- 'veeeeeeery_long_string' with the row number. 
 -- The table 'table_to_delete' will now have 10 million rows.
 
--- 2. Check how much space the table consumes:
+-- Execution time: 29 seconds
 
+
+-- ===================================================
+-- 1. Space Consumption Before DELETE
+-- ===================================================
+
+-- Query that shows space consumption before DELETE
 SELECT *, 
        pg_size_pretty(total_bytes) AS total,
        pg_size_pretty(index_bytes) AS index,
@@ -33,25 +42,23 @@ FROM (
 ) a
 WHERE table_name LIKE '%table_to_delete%';
 
--- Explanation:
--- This query checks the total space consumed by the 'table_to_delete' table. It includes:
--- - `total_bytes`: The total space the table occupies (including indexes and TOAST storage).
--- - `index_bytes`: The space consumed by the indexes.
--- - `toast_bytes`: The space used by large objects (if any).
--- - `table_bytes`: The space consumed by just the table data.
--- Expected result: The table 'table_to_delete' occupies around **575 MB** of disk space initially.
+-- Result: 575 MB (initial size before DELETE)
 
--- 3. Perform the DELETE operation:
 
+-- ===================================================
+-- 2. DELETE Operation with Duration Measurement
+-- ===================================================
+
+EXPLAIN ANALYZE
 DELETE FROM table_to_delete
 WHERE REPLACE(col, 'veeeeeeery_long_string', '')::int % 3 = 0;
 
--- Explanation:
--- This DELETE statement removes rows where the value in 'col' (after replacing 'veeeeeeery_long_string' with an empty string) is divisible by 3. 
--- Since there are 10 million rows, approximately one-third of the rows are removed.
--- Expected result: The DELETE operation takes around **18 seconds** to execute.
+-- Expected result: DELETE takes ~20.315548 seconds
 
--- 4. Check space consumption after DELETE:
+
+-- ===================================================
+-- 3. Space Consumption After DELETE
+-- ===================================================
 
 SELECT *, 
        pg_size_pretty(total_bytes) AS total,
@@ -75,21 +82,23 @@ FROM (
 ) a
 WHERE table_name LIKE '%table_to_delete%';
 
--- Explanation:
--- Despite deleting rows, the table still occupies around **575 MB** of disk space. 
--- This happens because the space used by deleted rows is not immediately freed. PostgreSQL marks the space as reusable, but the actual space is still allocated.
--- Thus, **DELETE** does not immediately reduce disk usage.
+-- Expected result: 575 MB (may not show much reduction yet).
+-- Conclusion: DELETE marks rows as dead but does not reclaim space immediately.
 
--- 5. Perform the VACUUM FULL operation:
+
+-- ===================================================
+-- 4. VACUUM FULL Operation with Duration Measurement
+-- ===================================================
 
 VACUUM FULL VERBOSE table_to_delete;
 
--- Explanation:
--- The `VACUUM FULL` command reorganizes the table and reclaims space that was freed by the DELETE operation.
--- It removes the unused space and physically shrinks the table, which can help reduce disk usage.
--- `VERBOSE` option provides detailed output on the vacuuming process.
+-- Expected result: VACUUM takes ~8 seconds to run.
+-- Conclusion: VACUUM FULL rewrites the entire table, removing dead tuples and compacting space.
 
--- 6. Check space consumption after VACUUM FULL:
+
+-- ===================================================
+-- 5. Space Consumption After VACUUM FULL
+-- ===================================================
 
 SELECT *, 
        pg_size_pretty(total_bytes) AS total,
@@ -113,30 +122,23 @@ FROM (
 ) a
 WHERE table_name LIKE '%table_to_delete%';
 
--- Explanation:
--- After performing the `VACUUM FULL` operation, the table size is reduced to around **383 MB**. 
--- This is because `VACUUM FULL` reclaims unused space that was left by deleted rows, resulting in a more compact storage for the table.
--- The space used by the table is now reduced and more efficient.
+-- Expected result: After VACUUM FULL, the table size should be reduced (e.g., 383 MB).
+-- Conclusion: Significant space is recovered after VACUUM FULL.
 
--- 7. Recreate the table and perform the TRUNCATE operation:
 
-DROP TABLE IF EXISTS table_to_delete;
-CREATE TABLE table_to_delete AS
-SELECT 'veeeeeeery_long_string' || x AS col
-FROM generate_series(1, (10^7)::int) x;
-
--- Explanation:
--- Recreating the table 'table_to_delete' with the same data (10 million rows).
-
--- Perform TRUNCATE operation:
+-- ===================================================
+-- 6. TRUNCATE Operation with Duration Measurement
+-- ===================================================
 
 TRUNCATE table_to_delete;
 
--- Explanation:
--- The `TRUNCATE` operation removes all rows from the table **instantly**, unlike `DELETE`, which works row by row.
--- `TRUNCATE` is a much faster operation and does not generate individual row delete logs. This operation takes **0.035 seconds** to complete.
+-- Expected result: TRUNCATE takes ~0.012 seconds.
+-- Conclusion: TRUNCATE is extremely fast and removes all rows instantly, but is not transactional.
 
--- 8. Check space consumption after TRUNCATE:
+
+-- ===================================================
+-- 7. Space Consumption After TRUNCATE
+-- ===================================================
 
 SELECT *, 
        pg_size_pretty(total_bytes) AS total,
@@ -160,8 +162,29 @@ FROM (
 ) a
 WHERE table_name LIKE '%table_to_delete%';
 
--- Explanation:
--- After performing the `TRUNCATE` operation, the table should occupy **0 bytes** since it no longer contains any rows.
--- The `TRUNCATE` command quickly removes all rows, and PostgreSQL does not need to reclaim space as it does with `DELETE`.
+-- Expected result: After TRUNCATE, the table should occupy ~0 bytes.
+-- Conclusion: TRUNCATE completely clears and resets the storage footprint.
 
-*/
+
+-- ===================================================
+-- 8. Final conclusions
+-- ===================================================
+
+-- DELETE:
+-- - Duration: ~20.3 seconds
+-- - Space after: ~575 MB (no change)
+-- - Used for selective deletion; doesn't free disk space immediately.
+
+-- VACUUM FULL:
+-- - Duration: ~8 seconds
+-- - Space after: ~383 MB
+-- - Reclaims space after DELETE, but locks table and rewrites data.
+
+-- TRUNCATE:
+-- - Duration: ~0.012 seconds
+-- - Space after: ~0 bytes
+-- - Best for full deletion. Fast and fully reclaims space.
+
+-- Overall Recommendation:
+-- Use DELETE + VACUUM FULL when selective row removal is required.
+-- Use TRUNCATE when you want to remove all data quickly and efficiently.
