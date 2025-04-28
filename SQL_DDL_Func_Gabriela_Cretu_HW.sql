@@ -6,9 +6,8 @@
 -- Only include categories with at least one sale in the current quarter.
 -- Note: When the next quarter begins, it will be considered the current quarter.
 
-DROP view sales_revenue_by_category_qtr;
+DROP view if exists  sales_revenue_by_category_qtr;
 
-CREATE VIEW sales_revenue_by_category_qtr AS
 CREATE VIEW sales_revenue_by_category_qtr AS
 SELECT 
     c.category_id,
@@ -36,10 +35,12 @@ SELECT * FROM sales_revenue_by_category_qtr;
 -- 'sales_revenue_by_category_qtr' view.
 
 --solution 1
-CREATE OR REPLACE FUNCTION get_sales_revenue_by_category_qtr(p_quarter INT, p_year INT)
+drop function if exists get_sales_revenue_by_category_qtr;
+
+CREATE OR REPLACE FUNCTION get_sales_revenue_by_category_qtr(date1 DATE)
 RETURNS TABLE (
     category_id INT,
-    name VARCHAR,
+    name text,
     total_revenue NUMERIC
 ) AS
 $$
@@ -55,15 +56,20 @@ BEGIN
     INNER JOIN public.film f ON i.film_id = f.film_id
     INNER JOIN public.film_category fc ON f.film_id = fc.film_id
     INNER JOIN public.category c ON fc.category_id = c.category_id
-    WHERE EXTRACT(QUARTER FROM p.payment_date) = p_quarter  -- Use the passed quarter
-      AND EXTRACT(YEAR FROM p.payment_date) = p_year      -- Use the passed year
+    WHERE EXTRACT(QUARTER FROM p.payment_date) = extract(quarter from date1)  -- Use the passed quarter
+      AND EXTRACT(YEAR FROM p.payment_date) =extract(year from date1)     -- Use the passed year
     GROUP BY c.category_id, c."name"
     HAVING SUM(p.amount) > 0;  -- Only include categories with at least one sale
 END;
 $$ LANGUAGE plpgsql;
 
+SELECT * FROM get_sales_revenue_by_category_qtr('12-02-2017');
+
+
 --solution 2
-CREATE OR REPLACE FUNCTION get_sales_revenue_by_category_qtr(p_quarter INT, p_year INT, OUT category_id INT, OUT name VARCHAR, OUT total_revenue NUMERIC)
+drop function if exists get_sales_revenue_by_category_qtr;
+CREATE OR REPLACE FUNCTION get_sales_revenue_by_category_qtr(date1 date, OUT category_id INT, OUT name text, OUT total_revenue NUMERIC)
+returns setof record
 AS
 $$
 BEGIN
@@ -79,12 +85,15 @@ BEGIN
     INNER JOIN public.film f ON i.film_id = f.film_id
     INNER JOIN public.film_category fc ON f.film_id = fc.film_id
     INNER JOIN public.category c ON fc.category_id = c.category_id
-    WHERE EXTRACT(QUARTER FROM p.payment_date) = p_quarter
-      AND EXTRACT(YEAR FROM p.payment_date) = p_year
+    WHERE EXTRACT(QUARTER FROM p.payment_date) = extract(quarter from date1)
+      AND EXTRACT(YEAR FROM p.payment_date) = extract(year from date1)
     GROUP BY c.category_id, c."name"
     HAVING SUM(p.amount) > 0;
 END;
 $$ LANGUAGE plpgsql;
+
+SELECT * FROM get_sales_revenue_by_category_qtr('12-02-2017');
+
 
 
 -- Task 3. Create procedure language functions
@@ -92,6 +101,8 @@ $$ LANGUAGE plpgsql;
 -- most popular film in that country. 
 -- Example Query: 
 -- SELECT * FROM core.most_popular_films_by_countries(array['Afghanistan','Brazil','United States']);
+
+drop function if exists get_most_popular_films;
 
 CREATE OR REPLACE FUNCTION get_most_popular_films(countries TEXT[])
 RETURNS TABLE (
@@ -106,89 +117,79 @@ $$
 DECLARE
     country_name TEXT;
     v_count INT;
-    v_film_name TEXT;
+    v_rental_count INT;
 BEGIN
     -- Check if input is empty
     IF array_length(countries, 1) IS NULL THEN
         RAISE EXCEPTION 'Input country list is empty. Please provide at least one country.';
     END IF;
 
-    -- Create a temporary table to store the result
-    CREATE TEMPORARY TABLE result_table2 (
-        country TEXT,
-        film_name TEXT,
-        rating TEXT,
-        language_name BPCHAR,
-        film_length INT,
-        release_year public."year"
-    ) ON COMMIT DROP;
-
-    -- Loop through each country in the input array
+    -- Loop through each country individually
     FOREACH country_name IN ARRAY countries LOOP
         RAISE NOTICE 'Now we are searching for the most viewed film in %', country_name;
 
-        -- Check if country exists in the database
+        -- Check if country exists
         SELECT COUNT(*) INTO v_count
-        FROM public.country c2
-        WHERE c2.country = country_name;
+        FROM public.country c
+        WHERE lower(c.country) = lower(country_name);
 
         IF v_count = 0 THEN
             RAISE WARNING 'Country "%" not found in the database. Skipping.', country_name;
             CONTINUE;
         END IF;
 
-        -- Insert the most rented film for the current country into the result table
-        INSERT INTO result_table2 (
-            country,
-            film_name,
-            rating,
-            language_name,
-            film_length,
-            release_year
+        -- Check if there are rentals for that country
+        SELECT COUNT(r.rental_id) INTO v_rental_count
+        FROM public.country c2
+        JOIN public.city c ON c.country_id = c2.country_id
+        JOIN public.address a ON a.city_id = c.city_id
+        JOIN public.store s ON s.address_id = a.address_id
+        JOIN public.staff sa ON sa.store_id = s.store_id
+        JOIN public.rental r ON r.staff_id = sa.staff_id
+        WHERE lower(c2.country) = lower(country_name);
+
+        IF v_rental_count = 0 THEN
+            RAISE NOTICE 'No rentals found for country "%". Skipping.', country_name;
+            CONTINUE;
+        END IF;
+
+        -- For valid country with rentals, return the result
+        RETURN QUERY
+        WITH ranked_films AS (
+            SELECT
+                country_name AS country,
+                f.title AS film_name,
+                f.rating::TEXT AS rating,
+                l.name AS language_name,
+                f.length::INT AS film_length, -- Cast smallint to int here!
+                f.release_year,
+                DENSE_RANK() OVER (ORDER BY COUNT(r.rental_id) DESC) AS rnk
+            FROM public.country c2
+            JOIN public.city c ON c.country_id = c2.country_id
+            JOIN public.address a ON a.city_id = c.city_id
+            JOIN public.store s ON s.address_id = a.address_id
+            JOIN public.staff sa ON sa.store_id = s.store_id
+            JOIN public.rental r ON r.staff_id = sa.staff_id
+            JOIN public.inventory i ON i.inventory_id = r.inventory_id
+            JOIN public.film f ON f.film_id = i.film_id
+            JOIN public.language l ON f.language_id = l.language_id
+            WHERE lower(c2.country) = lower(country_name)
+            GROUP BY f.film_id, f.title, f.rating, l.name, f.length, f.release_year
         )
         SELECT
-            country_name,
-            f.title,
-            f.rating::TEXT,
-            l.name,
-            f.length,
-            f.release_year
-        FROM public.country c2
-        LEFT JOIN public.city c ON c.country_id = c2.country_id
-        LEFT JOIN public.address a ON a.city_id = c.city_id
-        LEFT JOIN public.store s ON s.address_id = a.address_id
-        LEFT JOIN public.staff sa ON sa.store_id = s.store_id
-        LEFT JOIN public.rental r ON r.staff_id = sa.staff_id
-        LEFT JOIN public.inventory i ON i.inventory_id = r.inventory_id
-        LEFT JOIN public.film f ON f.film_id = i.film_id
-        LEFT JOIN public.language l ON f.language_id = l.language_id
-        WHERE c2.country = country_name
-        GROUP BY f.film_id, f.title, f.rating, l.name, f.length, f.release_year
-        ORDER BY COUNT(r.rental_id) DESC
-        LIMIT 1;
-
-        -- Check if insert happened
-        SELECT r.film_name INTO v_film_name
-        FROM result_table2 r
-        WHERE r.country = country_name;
-
-        IF v_film_name IS NULL THEN
-            RAISE NOTICE 'No rentals found for country "%".', country_name;
-        END IF;
+            r.country,
+            r.film_name,
+            r.rating,
+            r.language_name,
+            r.film_length,
+            r.release_year
+        FROM ranked_films r
+        WHERE rnk = 1
+        ORDER BY film_name;
     END LOOP;
-
-    -- Return all the records from the temporary table
-    RETURN QUERY
-    SELECT
-        re.country,
-        re.film_name,
-        re.rating,
-        re.language_name,
-        re.film_length,
-        re.release_year
-    FROM result_table2 re;
 END;
 $$ LANGUAGE plpgsql;
+
 
 -- Example usage
 SELECT * FROM get_most_popular_films(ARRAY['Australia', 'Brazil', 'United States']);
@@ -204,50 +205,57 @@ SELECT * FROM get_most_popular_films(ARRAY['Australia', 'Brazil', 'United States
 -- Example Query: 
 -- SELECT * FROM core.films_in_stock_by_title('%love%');
 
-DROP FUNCTION IF EXISTS films_in_stock_by_title(TEXT);
 
-DROP FUNCTION IF EXISTS films_in_stock_by_title(TEXT);
-
-CREATE OR REPLACE FUNCTION films_in_stock_by_title(word TEXT)
-RETURNS TABLE (
-    Row_num BIGINT,
-    Film_title TEXT,
-    Language BPCHAR,
-    Customer_name TEXT,
-    Rental_date TIMESTAMPTZ,
-    Message TEXT
-) AS
+drop function if exists  films_in_stock_by_title;
+CREATE OR REPLACE FUNCTION films_in_stock_by_title(
+    IN word TEXT,
+    OUT r_num BIGINT,
+    OUT Film_title TEXT,
+    OUT Language TEXT,
+    OUT Customer_name TEXT,
+    OUT Rental_date TIMESTAMPTZ
+)
+RETURNS SETOF RECORD
+AS
 $$
+DECLARE
+    rec RECORD;
+    counter BIGINT := 1;
 BEGIN
-    -- Return movies with a partial title match, including row number
-    RETURN QUERY 
-    SELECT 
-        ROW_NUMBER() OVER () AS Row_num,  -- Generates the Row_num
-        f.title AS Film_title,
-        l.name AS Language,
-        c.first_name || ' ' || c.last_name AS Customer_name,
-        r.rental_date AS Rental_date,
-        NULL AS Message  -- No message when movies are found
-    FROM film f
-    INNER JOIN language l ON f.language_id = l.language_id
-    INNER JOIN public.inventory i ON f.film_id = i.film_id
-    INNER JOIN public.rental r ON i.inventory_id = r.inventory_id
-    INNER JOIN public.payment p ON r.rental_id = p.rental_id
-    INNER JOIN public.customer c ON p.customer_id = c.customer_id
-    WHERE f.title ILIKE '%' || word || '%';
+    FOR rec IN
+        SELECT 
+            f.title AS Film_title,
+            l.name AS Language,
+            c.first_name || ' ' || c.last_name AS Customer_name,
+            r.rental_date AS Rental_date
+        FROM film f
+        INNER JOIN language l ON f.language_id = l.language_id
+        INNER JOIN inventory i ON f.film_id = i.film_id
+        INNER JOIN rental r ON i.inventory_id = r.inventory_id
+        INNER JOIN payment p ON r.rental_id = p.rental_id
+        INNER JOIN customer c ON p.customer_id = c.customer_id
+        WHERE f.title ILIKE '%' || word || '%'
+    LOOP
+        r_num := counter;
+        Film_title := rec.Film_title;
+        Language := rec.Language;
+        Customer_name := rec.Customer_name;
+        Rental_date := rec.Rental_date;
 
-    -- If no movies are found, return a message
-     IF NOT FOUND THEN
-        RAISE EXCEPTION 'No movies found matching the search criteria for "%".', word;
+        counter := counter + 1;
+
+        RETURN NEXT; -- return one row at a time
+    END LOOP;
+
+    IF counter = 1 THEN -- No rows were returned
+        RAISE NOTICE 'No movies in stock matching the search criteria for "%".', word;
     END IF;
+
+    RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
-
-
-
-SELECT * FROM films_in_stock_by_title('%love%')
-
+SELECT * FROM films_in_stock_by_title('%loved%')
 
 
 
@@ -259,6 +267,8 @@ SELECT * FROM films_in_stock_by_title('%love%')
 --   - Default release year to the current year and language to 'Klingon'.
 --   - Verify the language exists in the 'language' table.
 --   - Ensure that the function is not already created before, and replace it if so.
+
+drop function if exists  new_movie;
 
 CREATE OR REPLACE FUNCTION new_movie(
     movie TEXT,
@@ -281,6 +291,17 @@ BEGIN
         INSERT INTO public.language(name)
         VALUES ('Klingon')
         RETURNING language_id INTO m_language_id;
+    END IF;
+
+    -- Check if the movie already exists in the film table
+    SELECT film_id INTO m_film_id
+    FROM public.film
+    WHERE title = movie;
+
+    IF FOUND THEN
+        -- If the movie already exists, raise a notice and return the existing film_id
+        RAISE NOTICE 'Movie "%" already exists with ID: %', movie, m_film_id;
+        RETURN m_film_id;
     END IF;
 
     -- Insert the new movie into the film table
