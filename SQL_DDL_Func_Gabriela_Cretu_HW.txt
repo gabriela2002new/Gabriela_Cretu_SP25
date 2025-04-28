@@ -123,6 +123,8 @@ $function$;
 -- -------------------------------------------------------------------
 -- 3. Which function could be removed and why?
 -- -------------------------------------------------------------------
+--Best idea:
+--     -Remove function last_day because it is not currently used in any table
 -- Suggestion:
 --   - Remove 'film_not_in_stock'
 --   - Reason: It duplicates logic from 'film_in_stock' with inverse behavior.
@@ -213,14 +215,38 @@ $function$;
 --   - Reports or UI features listing multiple related entities as one field
 
 -- -------------------------------------------------------------------
--- 6. last_updated function
+-- 6. last_updated Function
 -- -------------------------------------------------------------------
--- Operation:
---   - Used as a default value for the 'last_update' column in most tables.
---   - Returns current_timestamp when a row is inserted or updated.
-
 -- Purpose:
---   - Tracks the most recent modification time for each record.
+--   - The 'last_updated' function is used to automatically set the default value 
+--     for the 'last_update' column in many tables.
+--   - It returns the current timestamp whenever a row is inserted or updated.
+--
+-- Investigation:
+--   - Initially, I ran a query to check if the function is directly referenced in any table, 
+--     but no direct usage was found.
+--   - Next, I checked if the function is invoked through triggers, meaning it could perform 
+--     automatically after certain operations even if not explicitly called. 
+--     The search revealed that it is used as a trigger in 14 tables:
+--     actor, address, category, city, country, customer, film, film_actor, 
+--     film_category, inventory, language, rental, staff, and store.
+--
+-- Query to find where 'last_updated' is used in triggers:
+SELECT 
+    t.tgname AS trigger_name, 
+    c.relname AS table_name,
+    p.proname AS function_name
+FROM 
+    pg_catalog.pg_trigger t
+INNER JOIN 
+    pg_catalog.pg_class c ON c.oid = t.tgrelid
+INNER JOIN 
+    pg_catalog.pg_proc p ON p.oid = t.tgfoid
+WHERE 
+    p.proname = 'last_updated';
+
+-- Purpose of the function:
+--   - It tracks the most recent modification time for each record in the tables where it's used.
 
 -- -------------------------------------------------------------------
 -- 7. What is tmpSQL used for in rewards_report?
