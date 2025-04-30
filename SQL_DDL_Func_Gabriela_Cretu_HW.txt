@@ -1,0 +1,259 @@
+-- ========================================================
+-- TASK 6: FUNCTIONALITY REVIEW AND IMPROVEMENT - DVD RENTAL DB
+-- ========================================================
+
+-- 1. What operations do the following functions perform?
+-- -------------------------------------------------------
+
+-- 1.1 film_in_stock(p_film_id integer, p_store_id integer, OUT p_film_count integer)
+-- Operation: This function returns a list of inventory_id values for a specific film that are currently in stock at a given store.
+-- Details:
+--   - It queries the 'inventory' table for matching film_id and store_id.
+--   - For each inventory_id, it uses the 'inventory_in_stock' function to determine availability.
+--   - Returns: A set of inventory_id values for in-stock items.
+
+-- 1.2 film_not_in_stock(p_film_id integer, p_store_id integer, OUT p_film_count integer)
+-- Operation: This function returns inventory_id values for a given film that are currently NOT in stock at a specific store.
+-- Details:
+--   - Same logic as 'film_in_stock', but it negates the condition checking if inventory is in stock.
+--   - Returns: A set of inventory_id values where items are out of stock.
+
+-- 1.3 inventory_in_stock(p_inventory_id integer)
+-- Operation: Checks whether a specific DVD (inventory_id) is in stock.
+-- Details:
+--   - Checks if the inventory item has an associated rental record where return_date IS NULL.
+--   - If no active rental exists, it is considered in stock.
+--   - Returns: BOOLEAN (true if in stock, false otherwise)
+
+-- 1.4 get_customer_balance(p_customer_id integer, p_effective_date date)
+-- Operation: Calculates a customer's balance considering rental charges, overdue fees, and payments.
+-- Details:
+--   - Includes rental fees based on the rental_rate.
+--   - Adds $1/day for overdue items beyond rental_duration.
+--   - Adds replacement cost if overdue is greater than 2× rental duration.
+--   - Subtracts total payments made until the effective date.
+--   - Returns: Final balance owed by the customer.
+
+-- 1.5 inventory_held_by_customer(p_inventory_id integer)
+-- Operation: Returns the customer_id of the person currently renting the given inventory item.
+-- Details:
+--   - Queries the rental table for the inventory_id where return_date IS NULL.
+--   - Returns: customer_id
+
+-- 1.6 rewards_report(min_monthly_purchases integer, min_dollar_amount_purchased numeric)
+-- Operation: Returns customers eligible for a rewards program based on purchase frequency and amount.
+-- Details:
+--   - Filters customers who meet or exceed both conditions:
+--     * Minimum number of purchases in a month.
+--     * Minimum total amount purchased.
+--   - The evaluation uses data from a manually set time window (e.g., January 2017).
+--   - Returns: SETOF customer records meeting criteria.
+
+-- 1.7 last_day(timestamp with time zone)
+-- Operation: Returns the last day of the month for the provided timestamp.
+-- Details:
+--   - Handles edge case for December.
+--   - General logic: add 1 month to input, set to first day of next month, subtract 1 day.
+--   - Returns: last day of month as date
+
+-- -------------------------------------------------------------------
+-- 2. Why does the 'rewards_report' function return 0 rows?
+-- -------------------------------------------------------------------
+-- Reason:
+--   - The function filters on recent payment activity (e.g., last month).
+--   - The sample database contains data only from 2017.
+--   - If run in current year (e.g., 2025), no payments will match.
+
+-- Solution:
+--   - Adjust the date range manually to a known valid month in the sample data.
+--   - Example: January 2017.
+
+-- Fixed Function Definition:
+CREATE OR REPLACE FUNCTION public.rewards_report(
+    min_monthly_purchases integer,
+    min_dollar_amount_purchased numeric
+)
+RETURNS SETOF customer
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $function$
+DECLARE
+    last_month_start DATE;
+    last_month_end DATE;
+    rr RECORD;
+    tmpSQL TEXT;
+BEGIN
+    IF min_monthly_purchases = 0 THEN
+        RAISE EXCEPTION 'Minimum monthly purchases parameter must be > 0';
+    END IF;
+
+    IF min_dollar_amount_purchased = 0.00 THEN
+        RAISE EXCEPTION 'Minimum monthly dollar amount purchased must be > $0.00';
+    END IF;
+
+    -- Set reporting period manually (January 2017)
+    last_month_start := to_date('2017-01-01', 'YYYY-MM-DD');
+    last_month_end := LAST_DAY(last_month_start);
+
+    CREATE TEMP TABLE tmpCustomer (customer_id INTEGER NOT NULL PRIMARY KEY);
+
+    tmpSQL := 'INSERT INTO tmpCustomer (customer_id)
+        SELECT p.customer_id
+        FROM payment p
+        WHERE DATE(p.payment_date) BETWEEN ' || quote_literal(last_month_start) || ' AND ' || quote_literal(last_month_end) || '
+        GROUP BY p.customer_id
+        HAVING COUNT(*) > ' || min_monthly_purchases || '
+        AND SUM(p.amount) > ' || min_dollar_amount_purchased;
+
+    EXECUTE tmpSQL;
+
+    FOR rr IN EXECUTE '
+        SELECT c.*
+        FROM tmpCustomer t
+        JOIN customer c ON c.customer_id = t.customer_id
+    ' LOOP
+        RETURN NEXT rr;
+    END LOOP;
+
+    EXECUTE 'DROP TABLE tmpCustomer';
+    RETURN;
+END
+$function$;
+
+-- -------------------------------------------------------------------
+-- 3. Which function could be removed and why?
+-- -------------------------------------------------------------------
+--Best idea:
+--     -Remove function last_day because it is not currently used in any table
+-- Suggestion:
+--   - Remove 'film_not_in_stock'
+--   - Reason: It duplicates logic from 'film_in_stock' with inverse behavior.
+-- Alternative:
+--   - Modify 'film_in_stock' to accept a boolean parameter: in_stock BOOLEAN DEFAULT TRUE
+--   - Inside the function, check this flag to switch between stock and not-in-stock logic.
+
+-- -------------------------------------------------------------------
+-- 4. Modifying 'get_customer_balance' to fully meet business rules
+-- -------------------------------------------------------------------
+-- Missing business logic added:
+--   - Include replacement cost for rentals overdue more than 2× rental_duration
+--   - Variable added: v_replacement_fees
+
+CREATE OR REPLACE FUNCTION public.get_customer_balance(
+    p_customer_id integer,
+    p_effective_date timestamp with time zone
+)
+RETURNS numeric
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_rentfees DECIMAL(5,2);
+    v_overfees DECIMAL(5,2);
+    v_replacement_fees DECIMAL(5,2);
+    v_payments DECIMAL(5,2);
+BEGIN
+    -- 1. Rental fees
+    SELECT COALESCE(SUM(f.rental_rate), 0) INTO v_rentfees
+    FROM rental r
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    WHERE r.customer_id = p_customer_id
+      AND r.rental_date <= p_effective_date;
+
+    -- 2. Late fees ($1/day overdue)
+    SELECT COALESCE(SUM(
+        CASE 
+            WHEN (r.return_date - r.rental_date) > (f.rental_duration * interval '1 day')
+            THEN EXTRACT(DAY FROM ((r.return_date - r.rental_date) - (f.rental_duration * interval '1 day')))
+            ELSE 0
+        END), 0)
+    INTO v_overfees
+    FROM rental r
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    WHERE r.customer_id = p_customer_id
+      AND r.rental_date <= p_effective_date;
+
+    -- 3. Replacement fees (if overdue > 2× rental_duration)
+    SELECT COALESCE(SUM(
+        CASE 
+            WHEN (r.return_date - r.rental_date) > (f.rental_duration * 2 * interval '1 day')
+            THEN f.replacement_cost
+            ELSE 0
+        END), 0)
+    INTO v_replacement_fees
+    FROM rental r
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    WHERE r.customer_id = p_customer_id
+      AND r.rental_date <= p_effective_date;
+
+    -- 4. Total payments
+    SELECT COALESCE(SUM(amount), 0) INTO v_payments
+    FROM payment
+    WHERE customer_id = p_customer_id
+      AND payment_date <= p_effective_date;
+
+    -- Final balance
+    RETURN v_rentfees + v_overfees + v_replacement_fees - v_payments;
+END
+$function$;
+
+-- -------------------------------------------------------------------
+-- 5. group_concat and _group_concat functions
+-- -------------------------------------------------------------------
+-- _group_concat (internal helper):
+--   - Concatenates two text values with a separator (comma by default).
+--   - Called repeatedly by the aggregate function.
+
+-- group_concat (aggregate):
+--   - Aggregates multiple values into a single comma-separated string.
+--   - Useful for displaying actor names or film categories.
+
+-- Used in:
+--   - Views such as 'film_list'
+--   - Reports or UI features listing multiple related entities as one field
+
+-- -------------------------------------------------------------------
+-- 6. last_updated Function
+-- -------------------------------------------------------------------
+-- Purpose:
+--   - The 'last_updated' function is used to automatically set the default value 
+--     for the 'last_update' column in many tables.
+--   - It returns the current timestamp whenever a row is inserted or updated.
+--
+-- Investigation:
+--   - Initially, I ran a query to check if the function is directly referenced in any table, 
+--     but no direct usage was found.
+--   - Next, I checked if the function is invoked through triggers, meaning it could perform 
+--     automatically after certain operations even if not explicitly called. 
+--     The search revealed that it is used as a trigger in 14 tables:
+--     actor, address, category, city, country, customer, film, film_actor, 
+--     film_category, inventory, language, rental, staff, and store.
+--
+-- Query to find where 'last_updated' is used in triggers:
+SELECT 
+    t.tgname AS trigger_name, 
+    c.relname AS table_name,
+    p.proname AS function_name
+FROM 
+    pg_catalog.pg_trigger t
+INNER JOIN 
+    pg_catalog.pg_class c ON c.oid = t.tgrelid
+INNER JOIN 
+    pg_catalog.pg_proc p ON p.oid = t.tgfoid
+WHERE 
+    p.proname = 'last_updated';
+
+-- Purpose of the function:
+--   - It tracks the most recent modification time for each record in the tables where it's used.
+
+-- -------------------------------------------------------------------
+-- 7. What is tmpSQL used for in rewards_report?
+-- -------------------------------------------------------------------
+-- Purpose:
+--   - tmpSQL is used to dynamically construct and execute an INSERT query for temporary table 'tmpCustomer'.
+
+-- Can it be rewritten without dynamic SQL?
+--   - YES. Static SQL could replace dynamic EXECUTE by using direct INSERT...SELECT with parameters.
+--   - However, EXECUTE provides flexibility in query generation and avoids SQL injection when quote_literal is used properly.
