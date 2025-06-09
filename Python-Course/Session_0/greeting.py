@@ -1,5 +1,5 @@
 def greeting():
-    print("Hello, World!")
+    print("Gabriela Cretu")
 
-
-greeting()
+if __name__=='__main__':
+  greeting()
