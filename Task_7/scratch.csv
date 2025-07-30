@@ -1,0 +1,24 @@
+transaction_dt,retailer_license_number,customer_id,employee_id,game_number,tickets_bought,payment_method_id,sales,payout,customer_name,customer_gender,customer_dob,employee_name,employee_department,employee_status,retailer_location_name,retailer_location_zip_code,retailer_location_city,ticket_price,game_category,game_type,average_odds,average_odds_prob,top_prize,mid_prize,small_prize,payment_method_name
+2025-01-31,200031,VAN HORN_001,EMP_100021_1,Scratch_200031-48572-2025,3,1,60,0,Emily Carter,F,1982-05-14,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-08,200031,VAN HORN_021,EMP_100021_1,Scratch_200031-48572-2025,1,1,20,0,Mrs. Olivia Bennett,F,1975-08-19,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-31,200031,VAN HORN_023,EMP_100021_1,Scratch_200031-48572-2025,3,1,60,0,Sophia Nguyen,F,1987-01-11,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-21,200031,VAN HORN_044,EMP_100021_1,Scratch_200031-48572-2025,1,1,20,200,Michael Thompson,M,2006-04-05,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-20,200031,VAN HORN_056,EMP_100021_1,Scratch_200031-48572-2025,1,1,20,0,Robert Kim,M,1950-12-22,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-19,200031,VAN HORN_086,EMP_100021_1,Scratch_200031-48572-2025,3,1,60,10000,Jason Patel,M,1947-11-03,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-10,200031,VAN HORN_088,EMP_100021_1,Scratch_200031-48572-2025,2,1,40,10000,Angela Reyes,F,1945-03-17,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-18,200031,VAN HORN_102,EMP_100021_1,Scratch_200031-48572-2025,3,1,60,0,Ethan Rogers,M,1950-09-30,John Marshall,Sales Associate,Active,H & H DRIVE IN #7,79875,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-17,200032,VAN HORN_007,EMP_100021_2,Scratch_200032-48572-2025,3,1,60,0,Mariah Davis,F,1939-11-06,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-12,200032,VAN HORN_047,EMP_100021_2,Scratch_200032-48572-2025,1,1,20,200,Luke Peterson,M,2024-07-22,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-26,200032,VAN HORN_048,EMP_100021_2,Scratch_200032-48572-2025,3,1,60,0,Grace Lee,F,1963-11-30,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-30,200032,VAN HORN_094,EMP_100021_2,Scratch_200032-48572-2025,3,1,60,10000,Chloe Turner,F,1935-06-02,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-26,200032,VAN HORN_106,EMP_100021_2,Scratch_200032-48572-2025,1,1,20,0,Madison Cooper,F,1957-09-20,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-14,200032,VAN HORN_122,EMP_100021_2,Scratch_200032-48572-2025,1,1,20,0,Elizabeth Scott,F,1913-04-14,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-08,200032,VAN HORN_124,EMP_100021_2,Scratch_200032-48572-2025,3,1,60,10000,Amelia Hill,F,2013-12-11,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-20,200032,VAN HORN_153,EMP_100021_2,Scratch_200032-48572-2025,1,1,20,0,Benjamin Diaz,M,1998-06-18,Sandra Morales,Cashier,Active,H & H DRIVE IN #12,79860,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-31,200033,VAN HORN_011,EMP_100021_3,Scratch_200033-48572-2025,2,1,40,0,Liam Murphy,M,2023-09-30,Rebecca Grant,Cashier,Inactive,H & H DRIVE IN #15,79890,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+2025-01-11,200033,VAN HORN_027,EMP_100021_3,Scratch_200033-48572-2025,3,1,60,10000,Noah Jenkins,M,1985-04-10,Rebecca Grant,Cashier,Inactive,H & H DRIVE IN #15,79890,Van Horn,20,Scratch Tickets,Scratch,01:03.2,0.31447,250000,12000,250,Cash
+,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,
